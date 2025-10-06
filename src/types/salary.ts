@@ -32,7 +32,7 @@ export interface SalaryFilters {
   contractType?: ContractType;
   speciality?: Specialty;
   participantType?: ParticipantType;
-  yearsSinceGraduation?: number;
+  selectedYearsSinceGraduation?: number[]; // Seule propriété pour la sélection d'années
 }
 
 export interface SalaryInsert {

@@ -7,7 +7,6 @@ import {
   type SalaryMetrics,
   formations,
   specialties,
-  contractTypes,
 } from "@/types/salary";
 
 const SALARY_BUCKETS = [
@@ -53,8 +52,14 @@ export async function fetchSalaryEntries(
   if (filters.participantType) {
     query = query.eq("participant_type", filters.participantType);
   }
-  if (typeof filters.yearsSinceGraduation === "number") {
-    query = query.eq("years_since_graduation", filters.yearsSinceGraduation);
+  if (
+    filters.selectedYearsSinceGraduation &&
+    filters.selectedYearsSinceGraduation.length > 0
+  ) {
+    query = query.in(
+      "years_since_graduation",
+      filters.selectedYearsSinceGraduation
+    );
   }
 
   const { data, error } = await query;
@@ -83,30 +88,35 @@ export async function fetchSalaryEntries(
   }));
 }
 
+export function computeMedian(entries: SalaryEntry[]): number {
+  if (!entries.length) return 0;
+  const sorted = [...entries]
+    .sort((a, b) => a.salary - b.salary)
+    .map((entry) => entry.salary);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+  }
+  return Math.round(sorted[middle]);
+}
+
+export function getAvailableYearsSinceGraduation(
+  entries: SalaryEntry[]
+): number[] {
+  const uniqueYears = new Set<number>();
+  entries.forEach((entry) => {
+    if (typeof entry.years_since_graduation === "number") {
+      uniqueYears.add(entry.years_since_graduation);
+    }
+  });
+  return Array.from(uniqueYears).sort((a, b) => a - b);
+}
+
 export function computeSalaryMetrics(entries: SalaryEntry[]): SalaryMetrics {
-  const initialAverageFormation = formations.reduce<Record<string, number>>(
-    (acc, formation) => {
-      acc[formation] = 0;
-      return acc;
-    },
-    {}
-  );
-
-  const initialAverageSpecialty = specialties.reduce<Record<string, number>>(
-    (acc, speciality) => {
-      acc[speciality] = 0;
-      return acc;
-    },
-    {}
-  );
-
-  const initialAverageContract = contractTypes.reduce<Record<string, number>>(
-    (acc, contract) => {
-      acc[contract] = 0;
-      return acc;
-    },
-    {}
-  );
+  // Ne pas initialiser à 0 - seulement les moyennes avec des données réelles
+  const initialAverageFormation: Record<string, number> = {};
+  const initialAverageSpecialty: Record<string, number> = {};
+  const initialAverageContract: Record<string, number> = {};
 
   const sumByFormation: Record<string, { total: number; count: number }> = {};
   const sumBySpecialty: Record<string, { total: number; count: number }> = {};

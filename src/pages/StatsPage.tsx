@@ -15,9 +15,14 @@ import {
   AreaChart,
   Area,
 } from "recharts";
-import { AlertTriangle, Eye } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 
-import { computeSalaryMetrics, fetchSalaryEntries } from "@/lib/salary-service";
+import {
+  computeSalaryMetrics,
+  fetchSalaryEntries,
+  computeMedian,
+  getAvailableYearsSinceGraduation,
+} from "@/lib/salary-service";
 import {
   formations,
   specialties,
@@ -38,6 +43,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Select,
   SelectContent,
@@ -45,7 +51,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Separator } from "@/components/ui/separator";
+import { JobDetailsPopover } from "@/components/ui/job-details-popover";
 
 const currencyFormatter = new Intl.NumberFormat("fr-FR", {
   style: "currency",
@@ -82,20 +94,12 @@ const CONTRACT_LABEL_MAP: Record<ContractType, string> = {
 };
 
 function toAverageArray(record: Record<string, number>) {
-  return Object.entries(record).map(([label, value]) => ({ label, value }));
+  return Object.entries(record)
+    .filter(([_, value]) => value > 0) // Ne garder que les moyennes avec des données réelles
+    .map(([label, value]) => ({ label, value }));
 }
 
-function computeMedian(entries: SalaryEntry[]) {
-  if (!entries.length) return 0;
-  const sorted = [...entries]
-    .sort((a, b) => a.salary - b.salary)
-    .map((entry) => entry.salary);
-  const middle = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 0) {
-    return Math.round((sorted[middle - 1] + sorted[middle]) / 2);
-  }
-  return Math.round(sorted[middle]);
-}
+// Suppression de computeMedian - maintenant dans salary-service.ts
 
 function ChartSkeleton() {
   return (
@@ -124,22 +128,36 @@ function EmptyState() {
 export default function StatsPage() {
   const [filters, setFilters] = useState<SalaryFilters>({
     participantType: "Alumni",
+    selectedYearsSinceGraduation: [], // Nouvelle propriété pour sélection multiple
   });
-  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
+
+  // Query pour obtenir toutes les entrées Alumni afin de calculer les années disponibles
+  const allAlumniQuery = useQuery<SalaryEntry[], Error>({
+    queryKey: ["all-alumni"],
+    queryFn: async () => {
+      return await fetchSalaryEntries({ participantType: "Alumni" });
+    },
+    staleTime: 300_000, // 5 minutes
+  });
+
+  const availableYears = useMemo(() => {
+    if (!allAlumniQuery.data) return [];
+    return getAvailableYearsSinceGraduation(allAlumniQuery.data);
+  }, [allAlumniQuery.data]);
 
   useEffect(() => {
     if (
       filters.participantType &&
       filters.participantType !== "Alumni" &&
-      filters.yearsSinceGraduation !== undefined
+      filters.selectedYearsSinceGraduation?.length
     ) {
       setFilters((prev) => {
         const next = { ...prev };
-        delete next.yearsSinceGraduation;
+        delete next.selectedYearsSinceGraduation;
         return next;
       });
     }
-  }, [filters.participantType, filters.yearsSinceGraduation]);
+  }, [filters.participantType]);
 
   const query = useQuery<
     { entries: SalaryEntry[]; metrics: SalaryMetrics },
@@ -201,17 +219,6 @@ export default function StatsPage() {
       })
     );
   }, [query.data?.metrics]);
-
-  const availableYears = useMemo(() => {
-    if (!query.data?.entries) return [];
-    const unique = new Set<number>();
-    query.data.entries.forEach((entry) => {
-      if (typeof entry.years_since_graduation === "number") {
-        unique.add(entry.years_since_graduation);
-      }
-    });
-    return Array.from(unique).sort((a, b) => a - b);
-  }, [query.data?.entries]);
 
   const handleFilterChange = <Key extends keyof SalaryFilters>(
     key: Key,
@@ -332,38 +339,164 @@ export default function StatsPage() {
             </SelectContent>
           </Select>
 
-          <Select
-            value={
-              typeof filters.yearsSinceGraduation === "number"
-                ? String(filters.yearsSinceGraduation)
-                : "all"
-            }
-            onValueChange={(value) =>
-              handleFilterChange(
-                "yearsSinceGraduation",
-                value === "all" ? "all" : Number(value)
-              )
-            }
-            disabled={
-              (filters.participantType &&
-                filters.participantType !== "Alumni") ||
-              availableYears.length === 0
-            }
-          >
-            <SelectTrigger className="border-white/20 bg-black/40 text-white disabled:cursor-not-allowed disabled:opacity-50">
-              <SelectValue placeholder="Ancienneté" />
-            </SelectTrigger>
-            <SelectContent className="border border-white/10 bg-black/90 text-sm text-white">
-              <SelectItem value="all">Toutes les anciennetés</SelectItem>
-              {availableYears.map((years) => (
-                <SelectItem key={years} value={String(years)}>
-                  {years === 0
-                    ? "Alumni +0 — bébé alumni"
-                    : `Alumni +${years} an${years > 1 ? "s" : ""}`}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="border-white/20 bg-black/40 text-white hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-50 w-full justify-between"
+                disabled={
+                  (filters.participantType &&
+                    filters.participantType !== "Alumni") ||
+                  availableYears.length === 0
+                }
+              >
+                <span className="text-sm">
+                  {filters.selectedYearsSinceGraduation?.length
+                    ? filters.selectedYearsSinceGraduation.length ===
+                      availableYears.length
+                      ? "Toutes les anciennetés"
+                      : filters.selectedYearsSinceGraduation.length === 1
+                      ? filters.selectedYearsSinceGraduation[0] === 0
+                        ? "Alumni +0 — bébé alumni"
+                        : `Alumni +${
+                            filters.selectedYearsSinceGraduation[0]
+                          } an${
+                            filters.selectedYearsSinceGraduation[0] > 1
+                              ? "s"
+                              : ""
+                          }`
+                      : `${
+                          filters.selectedYearsSinceGraduation.length
+                        } sélectionnée${
+                          filters.selectedYearsSinceGraduation.length > 1
+                            ? "s"
+                            : ""
+                        }`
+                    : "Toutes les anciennetés"}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80" align="start">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-white text-sm">
+                    Filtrer par ancienneté
+                  </h4>
+                  <div className="flex gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        handleFilterChange("selectedYearsSinceGraduation", []);
+                      }}
+                      className="h-6 px-2 text-xs"
+                      disabled={!filters.selectedYearsSinceGraduation?.length}
+                    >
+                      Tout
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        handleFilterChange("selectedYearsSinceGraduation", [
+                          ...availableYears,
+                        ]);
+                      }}
+                      className="h-6 px-2 text-xs"
+                      disabled={
+                        filters.selectedYearsSinceGraduation?.length ===
+                        availableYears.length
+                      }
+                    >
+                      Sélectionner tout
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 max-h-48 overflow-y-auto">
+                  {availableYears.map((year) => {
+                    const isSelected =
+                      filters.selectedYearsSinceGraduation?.includes(year) ||
+                      false;
+                    return (
+                      <Button
+                        key={year}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => {
+                          const current =
+                            filters.selectedYearsSinceGraduation || [];
+                          const newSelection = isSelected
+                            ? current.filter((y) => y !== year)
+                            : [...current, year];
+
+                          handleFilterChange(
+                            "selectedYearsSinceGraduation",
+                            newSelection
+                          );
+                        }}
+                        className={`justify-between text-xs ${
+                          isSelected
+                            ? "bg-white text-black hover:bg-white/90"
+                            : "border-white/20 text-white hover:bg-white/10"
+                        }`}
+                      >
+                        <span>
+                          {year === 0
+                            ? "Alumni +0 — bébé alumni"
+                            : `Alumni +${year} an${year > 1 ? "s" : ""}`}
+                        </span>
+                        {isSelected && <span>✓</span>}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                {filters.selectedYearsSinceGraduation?.length ? (
+                  <div className="space-y-2">
+                    <div className="text-xs text-white/60">
+                      {filters.selectedYearsSinceGraduation.length} sélectionnée
+                      {filters.selectedYearsSinceGraduation.length > 1
+                        ? "s"
+                        : ""}{" "}
+                      :
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {filters.selectedYearsSinceGraduation
+                        .sort((a, b) => a - b)
+                        .map((year) => (
+                          <Badge
+                            key={year}
+                            variant="secondary"
+                            className="text-xs flex items-center gap-1"
+                          >
+                            {year === 0 ? "Bébé" : `+${year}`}
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                const current =
+                                  filters.selectedYearsSinceGraduation || [];
+                                const newSelection = current.filter(
+                                  (y) => y !== year
+                                );
+                                handleFilterChange(
+                                  "selectedYearsSinceGraduation",
+                                  newSelection
+                                );
+                              }}
+                              className="h-3 w-3 p-0 hover:bg-white/20"
+                            >
+                              ×
+                            </Button>
+                          </Badge>
+                        ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
@@ -777,7 +910,6 @@ export default function StatsPage() {
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-white/70">
             {query.data.metrics.latestEntries.map((entry) => {
-              const isExpanded = expandedEntryId === entry.id;
               return (
                 <div
                   key={entry.id}
@@ -829,30 +961,9 @@ export default function StatsPage() {
                           {entry.years_since_graduation > 1 ? "s" : ""}
                         </span>
                       ) : null}
-                      {entry.job_description ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedEntryId(isExpanded ? null : entry.id)
-                          }
-                          className="inline-flex items-center gap-1 rounded-full border border-white/20 px-3 py-1 text-white/70 transition hover:border-white/40 hover:text-white"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          {isExpanded ? "Masquer" : "Voir détails"}
-                        </button>
-                      ) : null}
+                      <JobDetailsPopover entry={entry} />
                     </div>
                   </div>
-                  {entry.job_description && isExpanded ? (
-                    <div className="mt-3 rounded-xl border border-white/10 bg-black/60 p-3 text-sm text-white/75">
-                      <p className="mb-2 text-xs uppercase tracking-[0.25em] text-white/50">
-                        Description du poste
-                      </p>
-                      <p className="whitespace-pre-line">
-                        {entry.job_description}
-                      </p>
-                    </div>
-                  ) : null}
                 </div>
               );
             })}
