@@ -1,4 +1,4 @@
-export const formations = ["Master", "DIC", "DIT"] as const;
+export const formations = ["Master", "DIC", "DIT", "TELECOM"] as const;
 export const specialties = ["SSI", "IABD", "INFO"] as const;
 export const contractTypes = [
   "Stage",
