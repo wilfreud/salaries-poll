@@ -20,7 +20,7 @@ export function SiteFooter() {
           </span>
           <span className="hidden h-5 w-px bg-white/20 sm:block" />
           <a
-            href="https://github.com/"
+            href="https://github.com/wilfreud/salaries-poll"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-1 rounded-full border border-white/10 px-3 py-1 text-muted-foreground transition hover:border-white/30 hover:text-white"
