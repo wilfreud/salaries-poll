@@ -5,8 +5,8 @@ const supabaseUrl = env.supabaseUrl;
 const supabaseAnonKey = env.supabaseAnonKey;
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn(
-    "Supabase credentials are missing. Please configure the .env file."
+  console.error(
+    "⚠️ Supabase credentials are missing. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your environment variables."
   );
 }
 
