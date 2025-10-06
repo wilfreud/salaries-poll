@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { HelpCircle, Loader2, ShieldCheck } from "lucide-react";
 
 import { createSalaryEntry } from "@/lib/salary-service";
 import { supabase } from "@/lib/supabase";
@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -41,6 +42,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const formSchema = z.object({
   job_title: z
@@ -55,11 +61,32 @@ const formSchema = z.object({
       message: "Au moins 2 caractères si tu renseignes le poste.",
     })
     .transform((value) => (value && value.length > 0 ? value : undefined)),
+  job_description: z
+    .string()
+    .trim()
+    .max(600, {
+      message: "600 caractères maximum pour la description.",
+    })
+    .optional()
+    .transform((value) => (value && value.length > 0 ? value : undefined)),
   formation: z.enum(formations),
   speciality: z.enum(specialties),
   contract_type: z.enum(contractTypes),
-  salary: z.coerce.number().int().positive().max(1_000_000),
+  salary: z.coerce
+    .number()
+    .int("Merci d’indiquer un montant entier.")
+    .positive("Le salaire doit être positif."),
   participant_type: z.enum(participantTypes).default("Alumni"),
+  years_since_graduation: z
+    .union([
+      z.literal(""),
+      z.coerce
+        .number()
+        .int("Merci d’indiquer un nombre entier.")
+        .min(0, "Minimum 0 (à la sortie d’école).")
+        .max(50, "Maximum 50 ans après la diplomation."),
+    ])
+    .transform((value) => (value === "" ? undefined : value)),
 });
 type FormSchema = typeof formSchema;
 type FormValues = z.input<FormSchema>;
@@ -67,16 +94,29 @@ type FormOutput = z.output<FormSchema>;
 
 export function SalaryForm() {
   const [hasSubmitted, setHasSubmitted] = useState(false);
+  const [showYearsHelp, setShowYearsHelp] = useState(false);
 
   const defaultValues: Partial<FormValues> = {
     job_title: "",
+    job_description: "",
+    salary: "",
     participant_type: "Alumni",
+    years_since_graduation: "",
   };
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues,
   });
+
+  const participantType = form.watch("participant_type");
+
+  useEffect(() => {
+    if (participantType !== "Alumni") {
+      setShowYearsHelp(false);
+      form.setValue("years_since_graduation", "");
+    }
+  }, [participantType, form]);
 
   const mutation = useMutation<void, Error, SalaryInsert>({
     mutationFn: createSalaryEntry,
@@ -95,6 +135,8 @@ export function SalaryForm() {
     const payload: SalaryInsert = {
       ...parsed,
       job_title: parsed.job_title ?? null,
+      job_description: parsed.job_description ?? null,
+      years_since_graduation: parsed.years_since_graduation ?? null,
     };
     mutation.mutate(payload);
   };
@@ -277,6 +319,38 @@ export function SalaryForm() {
                     </FormItem>
                   )}
                 />
+
+                <FormField
+                  control={form.control}
+                  name="job_description"
+                  render={({ field }) => (
+                    <FormItem className="md:col-span-2">
+                      <FormLabel>Description du travail (optionnel)</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Partage le périmètre, les missions clés, les technos…"
+                          className="border-white/15 bg-black/30 text-sm text-white placeholder:text-white/40"
+                          value={field.value ?? ""}
+                          onChange={(event) =>
+                            field.onChange(event.target.value)
+                          }
+                          onBlur={field.onBlur}
+                          name={field.name}
+                          ref={field.ref}
+                          maxLength={600}
+                        />
+                      </FormControl>
+                      <FormDescription>
+                        Quelques phrases pour donner du contexte (600 caractères
+                        max).
+                      </FormDescription>
+                      <div className="text-right text-xs text-white/40">
+                        {field.value?.length ?? 0}/600
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
 
               <FormField
@@ -284,9 +358,10 @@ export function SalaryForm() {
                 name="salary"
                 render={({ field }) => {
                   const displayValue =
-                    typeof field.value === "number" ||
                     typeof field.value === "string"
                       ? field.value
+                      : typeof field.value === "number"
+                      ? field.value.toString()
                       : "";
 
                   return (
@@ -299,9 +374,12 @@ export function SalaryForm() {
                           placeholder="Ex: 250000"
                           className="border-white/20 bg-black/40 text-white placeholder:text-white/40"
                           value={displayValue}
-                          onChange={(event) =>
-                            field.onChange(Number(event.target.value))
-                          }
+                          onChange={(event) => {
+                            const value = event.target.value;
+                            if (/^\d*$/.test(value)) {
+                              field.onChange(value);
+                            }
+                          }}
                           onBlur={field.onBlur}
                           name={field.name}
                           ref={field.ref}
@@ -316,6 +394,78 @@ export function SalaryForm() {
                   );
                 }}
               />
+
+              {participantType === "Alumni" ? (
+                <FormField
+                  control={form.control}
+                  name="years_since_graduation"
+                  render={({ field }) => {
+                    const value =
+                      field.value === undefined || field.value === null
+                        ? ""
+                        : (field.value as string | number);
+                    return (
+                      <FormItem>
+                        <FormLabel>
+                          <span className="flex items-center gap-2">
+                            Ancienneté (Alumni + X ans)
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <button
+                                  type="button"
+                                  className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/20 text-white/70 transition hover:border-white/40 hover:text-white"
+                                  onClick={() =>
+                                    setShowYearsHelp((prev) => !prev)
+                                  }
+                                  aria-label="En savoir plus sur le champ Alumni + X"
+                                  aria-pressed={showYearsHelp}
+                                >
+                                  <HelpCircle className="h-3.5 w-3.5" />
+                                </button>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs text-left text-xs">
+                                Indique depuis combien d’années tu es sorti·e de
+                                l’école. « Alumni +0 » correspond à un « bébé
+                                alumni » (tout juste diplômé·e).
+                              </TooltipContent>
+                            </Tooltip>
+                          </span>
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={50}
+                            placeholder="Ex: 3"
+                            className="border-white/20 bg-black/40 text-white placeholder:text-white/40"
+                            value={value}
+                            onChange={(event) =>
+                              field.onChange(event.target.value)
+                            }
+                            onBlur={field.onBlur}
+                            name={field.name}
+                            ref={field.ref}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Exemple: Alumni +3 pour un salaire 3 ans après la
+                          diplomation. Alumni +0 = « bébé alumni ».
+                        </FormDescription>
+                        <FormMessage />
+                        {showYearsHelp ? (
+                          <div className="mt-2 rounded-xl border border-white/15 bg-black/50 p-3 text-xs text-white/70">
+                            Ce champ permet d’indiquer depuis combien d’années
+                            tu es diplômé·e. Exemple&nbsp;: saisis
+                            «&nbsp;3&nbsp;» pour un salaire trois ans après ta
+                            sortie.
+                          </div>
+                        ) : null}
+                      </FormItem>
+                    );
+                  }}
+                />
+              ) : null}
 
               <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-black/40 p-4 text-sm text-white/80">
                 <div className="flex items-center gap-2 text-white/70">

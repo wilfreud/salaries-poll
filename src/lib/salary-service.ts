@@ -53,6 +53,9 @@ export async function fetchSalaryEntries(
   if (filters.participantType) {
     query = query.eq("participant_type", filters.participantType);
   }
+  if (typeof filters.yearsSinceGraduation === "number") {
+    query = query.eq("years_since_graduation", filters.yearsSinceGraduation);
+  }
 
   const { data, error } = await query;
   if (error) {
@@ -62,6 +65,20 @@ export async function fetchSalaryEntries(
   return (data ?? []).map((row) => ({
     ...row,
     job_title: row.job_title ?? null,
+    job_description: row.job_description ?? null,
+    years_since_graduation: (() => {
+      if (typeof row.years_since_graduation === "number") {
+        return row.years_since_graduation;
+      }
+      if (
+        row.years_since_graduation === null ||
+        row.years_since_graduation === undefined
+      ) {
+        return null;
+      }
+      const parsed = Number(row.years_since_graduation);
+      return Number.isNaN(parsed) ? null : parsed;
+    })(),
     salary: typeof row.salary === "string" ? Number(row.salary) : row.salary,
   }));
 }
@@ -189,8 +206,8 @@ export function computeSalaryMetrics(entries: SalaryEntry[]): SalaryMetrics {
       (a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     )
-    .slice(0, 6)
     .map((entry) => ({
+      id: entry.id,
       formation: entry.formation,
       speciality: entry.speciality,
       contract_type: entry.contract_type,
@@ -198,6 +215,8 @@ export function computeSalaryMetrics(entries: SalaryEntry[]): SalaryMetrics {
       participant_type: entry.participant_type,
       created_at: entry.created_at,
       job_title: entry.job_title,
+      job_description: entry.job_description,
+      years_since_graduation: entry.years_since_graduation,
     }));
 
   return {

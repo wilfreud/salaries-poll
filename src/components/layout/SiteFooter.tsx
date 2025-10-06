@@ -11,7 +11,7 @@ export function SiteFooter() {
     >
       <div className="mx-auto flex w-full max-w-5xl flex-col items-center justify-between gap-4 text-center text-xs text-muted-foreground sm:flex-row sm:text-left">
         <p className="max-w-xl leading-relaxed">
-          Codé avec vibes, café et amour ☕✨ – C’est vibe codé.
+          Vibe codé avec amour et tendresse ☕✨.
         </p>
         <div className="flex items-center gap-3 text-muted-foreground/80">
           <span className="flex items-center gap-1">

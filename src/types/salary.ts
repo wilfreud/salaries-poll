@@ -1,5 +1,5 @@
-export const formations = ["Master", "DIC", "DIT", "TELECOM"] as const;
-export const specialties = ["SSI", "IABD", "INFO"] as const;
+export const formations = ["Master", "DIC", "DIT"] as const;
+export const specialties = ["SSI", "IABD", "INFO", "TELECOM"] as const;
 export const contractTypes = [
   "Stage",
   "Alternance",
@@ -23,6 +23,8 @@ export interface SalaryEntry {
   salary: number;
   participant_type: ParticipantType;
   job_title: string | null;
+  job_description: string | null;
+  years_since_graduation: number | null;
 }
 
 export interface SalaryFilters {
@@ -30,6 +32,7 @@ export interface SalaryFilters {
   contractType?: ContractType;
   speciality?: Specialty;
   participantType?: ParticipantType;
+  yearsSinceGraduation?: number;
 }
 
 export interface SalaryInsert {
@@ -39,6 +42,8 @@ export interface SalaryInsert {
   salary: number;
   participant_type: ParticipantType;
   job_title?: string | null;
+  job_description?: string | null;
+  years_since_graduation?: number | null;
 }
 
 export interface SalaryMetrics {
@@ -65,6 +70,9 @@ export interface SalaryMetrics {
       | "participant_type"
       | "created_at"
       | "job_title"
+      | "job_description"
+      | "years_since_graduation"
+      | "id"
     >
   >;
 }

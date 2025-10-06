@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
@@ -15,7 +15,7 @@ import {
   AreaChart,
   Area,
 } from "recharts";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, Eye } from "lucide-react";
 
 import { computeSalaryMetrics, fetchSalaryEntries } from "@/lib/salary-service";
 import {
@@ -73,6 +73,14 @@ const filterOptions = {
   ],
 };
 
+const CONTRACT_LABEL_MAP: Record<ContractType, string> = {
+  Stage: "Stage",
+  Alternance: "Alternance",
+  CDD: "CDD",
+  CDI: "CDI",
+  "Prestation de service": "Prestation",
+};
+
 function toAverageArray(record: Record<string, number>) {
   return Object.entries(record).map(([label, value]) => ({ label, value }));
 }
@@ -117,6 +125,21 @@ export default function StatsPage() {
   const [filters, setFilters] = useState<SalaryFilters>({
     participantType: "Alumni",
   });
+  const [expandedEntryId, setExpandedEntryId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (
+      filters.participantType &&
+      filters.participantType !== "Alumni" &&
+      filters.yearsSinceGraduation !== undefined
+    ) {
+      setFilters((prev) => {
+        const next = { ...prev };
+        delete next.yearsSinceGraduation;
+        return next;
+      });
+    }
+  }, [filters.participantType, filters.yearsSinceGraduation]);
 
   const query = useQuery<
     { entries: SalaryEntry[]; metrics: SalaryMetrics },
@@ -169,6 +192,27 @@ export default function StatsPage() {
     });
   }, [query.data?.metrics]);
 
+  const contractChartData = useMemo(() => {
+    if (!query.data?.metrics) return [];
+    return toAverageArray(query.data.metrics.averageByContract ?? {}).map(
+      (item) => ({
+        ...item,
+        label: CONTRACT_LABEL_MAP[item.label as ContractType] ?? item.label,
+      })
+    );
+  }, [query.data?.metrics]);
+
+  const availableYears = useMemo(() => {
+    if (!query.data?.entries) return [];
+    const unique = new Set<number>();
+    query.data.entries.forEach((entry) => {
+      if (typeof entry.years_since_graduation === "number") {
+        unique.add(entry.years_since_graduation);
+      }
+    });
+    return Array.from(unique).sort((a, b) => a - b);
+  }, [query.data?.entries]);
+
   const handleFilterChange = <Key extends keyof SalaryFilters>(
     key: Key,
     value: SalaryFilters[Key] | "all"
@@ -212,7 +256,7 @@ export default function StatsPage() {
             pour affiner les indicateurs clés.
           </p>
         </div>
-        <div className="grid w-full gap-3 text-sm md:w-auto md:grid-cols-4">
+        <div className="grid w-full gap-3 text-sm md:w-auto md:grid-cols-5">
           <Select
             value={(filters.formation as string) ?? "all"}
             onValueChange={(value) =>
@@ -283,6 +327,39 @@ export default function StatsPage() {
               {filterOptions.participant.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={
+              typeof filters.yearsSinceGraduation === "number"
+                ? String(filters.yearsSinceGraduation)
+                : "all"
+            }
+            onValueChange={(value) =>
+              handleFilterChange(
+                "yearsSinceGraduation",
+                value === "all" ? "all" : Number(value)
+              )
+            }
+            disabled={
+              (filters.participantType &&
+                filters.participantType !== "Alumni") ||
+              availableYears.length === 0
+            }
+          >
+            <SelectTrigger className="border-white/20 bg-black/40 text-white disabled:cursor-not-allowed disabled:opacity-50">
+              <SelectValue placeholder="Ancienneté" />
+            </SelectTrigger>
+            <SelectContent className="border border-white/10 bg-black/90 text-sm text-white">
+              <SelectItem value="all">Toutes les anciennetés</SelectItem>
+              {availableYears.map((years) => (
+                <SelectItem key={years} value={String(years)}>
+                  {years === 0
+                    ? "Alumni +0 — bébé alumni"
+                    : `Alumni +${years} an${years > 1 ? "s" : ""}`}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -492,11 +569,7 @@ export default function StatsPage() {
               <ChartSkeleton />
             ) : (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={toAverageArray(
-                    query.data?.metrics.averageByContract ?? {}
-                  )}
-                >
+                <BarChart data={contractChartData}>
                   <CartesianGrid
                     strokeDasharray="3 3"
                     stroke="rgba(255,255,255,0.08)"
@@ -698,53 +771,91 @@ export default function StatsPage() {
           <CardHeader>
             <CardTitle>Contributions récentes</CardTitle>
             <CardDescription className="text-white/70">
-              Les 6 dernières entrées apparaissent ici pour donner un aperçu du
-              terrain.
+              Toutes les contributions les plus récentes (triées du plus récent
+              au plus ancien).
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-white/70">
-            {query.data.metrics.latestEntries.map((entry, idx) => (
-              <div
-                key={`${entry.formation}-${entry.speciality}-${idx}`}
-                className="rounded-2xl border border-white/10 bg-white/5 p-4"
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-[0.2em] text-white/60">
-                  <span>{entry.formation}</span>
-                  <Separator
-                    orientation="vertical"
-                    className="hidden h-4 bg-white/20 sm:block"
-                  />
-                  <span>{entry.speciality}</span>
-                  <Separator
-                    orientation="vertical"
-                    className="hidden h-4 bg-white/20 sm:block"
-                  />
-                  <span>{entry.contract_type}</span>
-                  <Separator
-                    orientation="vertical"
-                    className="hidden h-4 bg-white/20 sm:block"
-                  />
-                  <span>{entry.participant_type}</span>
-                </div>
-                {entry.job_title ? (
-                  <p className="mt-3 text-sm font-medium text-white/80">
-                    {entry.job_title}
+            {query.data.metrics.latestEntries.map((entry) => {
+              const isExpanded = expandedEntryId === entry.id;
+              return (
+                <div
+                  key={entry.id}
+                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-[0.2em] text-white/60">
+                    <span>{entry.formation}</span>
+                    <Separator
+                      orientation="vertical"
+                      className="hidden h-4 bg-white/20 sm:block"
+                    />
+                    <span>{entry.speciality}</span>
+                    <Separator
+                      orientation="vertical"
+                      className="hidden h-4 bg-white/20 sm:block"
+                    />
+                    <span>{entry.contract_type}</span>
+                    <Separator
+                      orientation="vertical"
+                      className="hidden h-4 bg-white/20 sm:block"
+                    />
+                    <span>{entry.participant_type}</span>
+                  </div>
+                  <p className="mt-3 text-sm text-white">
+                    <span className="font-semibold uppercase tracking-[0.2em] text-white/60">
+                      Intitulé
+                    </span>
+                    <br />
+                    {entry.job_title || "Non communiqué"}
                   </p>
-                ) : null}
-                <div className="mt-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <span className="text-lg font-medium text-white">
-                    {currencyFormatter.format(entry.salary)}
-                  </span>
-                  <span className="text-xs text-white/50">
-                    {new Date(entry.created_at).toLocaleDateString("fr-FR", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </span>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-lg font-medium text-white">
+                      {currencyFormatter.format(entry.salary)}
+                    </span>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-white/50">
+                      <span>
+                        {new Date(entry.created_at).toLocaleDateString(
+                          "fr-FR",
+                          {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          }
+                        )}
+                      </span>
+                      {entry.years_since_graduation !== null ? (
+                        <span>
+                          Alumni +{entry.years_since_graduation} an
+                          {entry.years_since_graduation > 1 ? "s" : ""}
+                        </span>
+                      ) : null}
+                      {entry.job_description ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedEntryId(isExpanded ? null : entry.id)
+                          }
+                          className="inline-flex items-center gap-1 rounded-full border border-white/20 px-3 py-1 text-white/70 transition hover:border-white/40 hover:text-white"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          {isExpanded ? "Masquer" : "Voir détails"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                  {entry.job_description && isExpanded ? (
+                    <div className="mt-3 rounded-xl border border-white/10 bg-black/60 p-3 text-sm text-white/75">
+                      <p className="mb-2 text-xs uppercase tracking-[0.25em] text-white/50">
+                        Description du poste
+                      </p>
+                      <p className="whitespace-pre-line">
+                        {entry.job_description}
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </CardContent>
         </Card>
       ) : null}

@@ -7,7 +7,7 @@ Application web responsive pour collecter et analyser anonymement les salaires d
 - **Page “Contribuer” (/submit)** : formulaire anonyme avec validations (formation, spécialité, type de contrat, intitulé du poste en option, revenu net, profil).
 - **Page “Statistiques” (/stats)** : tableaux de bord interactifs (Recharts) avec filtres dynamiques, KPIs, histogrammes, barres et courbes.
 - **Skeletons & animations** : transitions douces (Framer Motion) et skeleton loading par carte/graphique.
-- **Thème glassmorphique noir & blanc** avec blobs animés en arrière-plan et footer signature « Codé avec vibes, café et amour ☕✨ – C’est vibe codé. »
+- **Thème glassmorphique noir & blanc** avec blobs animés en arrière-plan et footer signature « Vibe codé avec amour et tendresse ☕✨. »
 - **Pile technique** : React Router 7, React Query 5, Supabase, TailwindCSS 3, shadcn/ui, Recharts, Framer Motion, Zod, React Hook Form.
 
 ## 🛠️ Prérequis
