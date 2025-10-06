@@ -66,6 +66,11 @@ const filterOptions = {
     { label: "Tous les contrats", value: "all" as const },
     ...contractTypes.map((item) => ({ label: item, value: item })),
   ],
+  participant: [
+    { label: "Tous les profils", value: "all" as const },
+    { label: "Alumni", value: "Alumni" },
+    { label: "Étudiant", value: "Étudiant" },
+  ],
 };
 
 function toAverageArray(record: Record<string, number>) {
@@ -109,7 +114,9 @@ function EmptyState() {
 }
 
 export default function StatsPage() {
-  const [filters, setFilters] = useState<SalaryFilters>({});
+  const [filters, setFilters] = useState<SalaryFilters>({
+    participantType: "Alumni",
+  });
 
   const query = useQuery<
     { entries: SalaryEntry[]; metrics: SalaryMetrics },
@@ -205,7 +212,7 @@ export default function StatsPage() {
             pour affiner les indicateurs clés.
           </p>
         </div>
-        <div className="grid w-full gap-3 text-sm md:w-auto md:grid-cols-3">
+        <div className="grid w-full gap-3 text-sm md:w-auto md:grid-cols-4">
           <Select
             value={(filters.formation as string) ?? "all"}
             onValueChange={(value) =>
@@ -259,6 +266,27 @@ export default function StatsPage() {
               ))}
             </SelectContent>
           </Select>
+
+          <Select
+            value={(filters.participantType as string) ?? "Alumni"}
+            onValueChange={(value) =>
+              handleFilterChange(
+                "participantType",
+                value as "Alumni" | "Étudiant" | "all"
+              )
+            }
+          >
+            <SelectTrigger className="border-white/20 bg-black/40 text-white">
+              <SelectValue placeholder="Profil" />
+            </SelectTrigger>
+            <SelectContent className="border border-white/10 bg-black/90 text-sm text-white">
+              {filterOptions.participant.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -297,6 +325,28 @@ export default function StatsPage() {
 
         <Card className="border-white/10 bg-black/40 p-6 text-white">
           <CardHeader className="space-y-1">
+            <CardDescription>Par profil</CardDescription>
+            <CardTitle className="text-2xl font-semibold">
+              Statistiques des participants
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-white/60">
+            {/* Discreet participant counts (replaces the previous 'Par profil' card) */}
+            <div className="mt-1 text-xs text-white/60">
+              {!isLoadingState && query.data ? (
+                <span>
+                  Alumni:{" "}
+                  {query.data.metrics.countByParticipantType.Alumni ?? 0} •
+                  Étudiants:{" "}
+                  {query.data.metrics.countByParticipantType["Étudiant"] ?? 0}
+                </span>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-white/10 bg-black/40 p-6 text-white">
+          <CardHeader className="space-y-1">
             <CardDescription>Salaire moyen</CardDescription>
             <CardTitle className="text-4xl font-semibold">
               {isLoadingState ? (
@@ -328,6 +378,50 @@ export default function StatsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="border-white/10 bg-black/40 p-6 text-white">
+        <CardHeader>
+          <CardTitle>Participants par formation & profil</CardTitle>
+          <CardDescription className="text-white/70">
+            Nombre de contributions par formation ventilées par type de profil.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 md:grid-cols-3">
+            {formations.map((formation) => (
+              <div
+                key={formation}
+                className="rounded-2xl border border-white/10 bg-white/5 p-4"
+              >
+                <div className="text-sm uppercase tracking-[0.2em] text-white/60">
+                  {formation}
+                </div>
+                <div className="mt-2 text-lg font-medium text-white">
+                  {query.data?.metrics.countByFormation[formation] ?? 0}
+                </div>
+                <div className="mt-1 text-sm text-white/60">
+                  Alumni:{" "}
+                  {
+                    query.data?.entries.filter(
+                      (e) =>
+                        e.formation === formation &&
+                        e.participant_type === "Alumni"
+                    ).length
+                  }{" "}
+                  • Étudiants:{" "}
+                  {
+                    query.data?.entries.filter(
+                      (e) =>
+                        e.formation === formation &&
+                        e.participant_type === "Étudiant"
+                    ).length
+                  }
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border-white/10 bg-black/40 p-6 text-white">

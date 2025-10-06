@@ -29,6 +29,7 @@ export interface SalaryFilters {
   formation?: Formation;
   contractType?: ContractType;
   speciality?: Specialty;
+  participantType?: ParticipantType;
 }
 
 export interface SalaryInsert {
@@ -45,6 +46,7 @@ export interface SalaryMetrics {
   averageByFormation: Record<Formation, number>;
   averageBySpecialty: Record<Specialty, number>;
   averageByContract: Record<ContractType, number>;
+  countByParticipantType: Record<ParticipantType, number>;
   salariesByRange: Array<{ label: string; count: number }>;
   countByFormation: Record<Formation, number>;
   countBySpecialty: Record<Specialty, number>;

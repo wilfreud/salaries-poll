@@ -1,5 +1,7 @@
 {
   "name": "junk-projects",
+  "displayName": "promo-salaries",
+  "description": "Collecte et analyse anonyme des salaires des promos d'ingénieurs (Dashboard noir & blanc)",
   "private": true,
   "version": "0.0.0",
   "type": "module",

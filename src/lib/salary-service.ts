@@ -15,7 +15,11 @@ const SALARY_BUCKETS = [
   { label: "100k – 199k", min: 100_000, max: 199_999 },
   { label: "200k – 299k", min: 200_000, max: 299_999 },
   { label: "300k – 399k", min: 300_000, max: 399_999 },
-  { label: "≥ 400k", min: 400_000, max: Number.POSITIVE_INFINITY },
+  { label: "400k – 499k", min: 400_000, max: 499_999 },
+  { label: "500k – 599k", min: 500_000, max: 599_999 },
+  { label: "600k – 699k", min: 600_000, max: 699_999 },
+  { label: "700k – 799k", min: 700_000, max: 799_999 },
+  { label: "≥ 800k", min: 800_000, max: Number.POSITIVE_INFINITY },
 ];
 
 export async function createSalaryEntry(payload: SalaryInsert) {
@@ -45,6 +49,9 @@ export async function fetchSalaryEntries(
   }
   if (filters.speciality) {
     query = query.eq("speciality", filters.speciality);
+  }
+  if (filters.participantType) {
+    query = query.eq("participant_type", filters.participantType);
   }
 
   const { data, error } = await query;
@@ -89,6 +96,7 @@ export function computeSalaryMetrics(entries: SalaryEntry[]): SalaryMetrics {
   const sumByContract: Record<string, { total: number; count: number }> = {};
   const countByFormation: Record<string, number> = {};
   const countBySpecialty: Record<string, number> = {};
+  const countByParticipantType: Record<string, number> = {};
   const rangeCounts = SALARY_BUCKETS.map((bucket) => ({ ...bucket, count: 0 }));
   const comboBuckets: Record<string, { total: number; count: number }> = {};
 
@@ -121,6 +129,8 @@ export function computeSalaryMetrics(entries: SalaryEntry[]): SalaryMetrics {
 
     countByFormation[formationKey] = (countByFormation[formationKey] ?? 0) + 1;
     countBySpecialty[specialtyKey] = (countBySpecialty[specialtyKey] ?? 0) + 1;
+    countByParticipantType[entry.participant_type] =
+      (countByParticipantType[entry.participant_type] ?? 0) + 1;
 
     const bucket = rangeCounts.find(
       (range) => safeSalary >= range.min && safeSalary <= range.max
@@ -197,6 +207,8 @@ export function computeSalaryMetrics(entries: SalaryEntry[]): SalaryMetrics {
     averageBySpecialty:
       averageBySpecialty as SalaryMetrics["averageBySpecialty"],
     averageByContract: averageByContract as SalaryMetrics["averageByContract"],
+    countByParticipantType:
+      countByParticipantType as SalaryMetrics["countByParticipantType"],
     salariesByRange: rangeCounts.map((range) => ({
       label: range.label,
       count: range.count,

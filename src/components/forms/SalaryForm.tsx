@@ -82,7 +82,10 @@ export function SalaryForm() {
     mutationFn: createSalaryEntry,
     onSuccess: () => {
       setHasSubmitted(true);
-      form.reset(defaultValues);
+      // Reset the form to the explicit default values so selects return to defaults
+      form.reset({
+        ...defaultValues,
+      });
     },
   });
 
@@ -297,7 +300,7 @@ export function SalaryForm() {
                           className="border-white/20 bg-black/40 text-white placeholder:text-white/40"
                           value={displayValue}
                           onChange={(event) =>
-                            field.onChange(event.target.value)
+                            field.onChange(Number(event.target.value))
                           }
                           onBlur={field.onBlur}
                           name={field.name}
