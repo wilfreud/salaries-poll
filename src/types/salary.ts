@@ -25,6 +25,8 @@ export interface SalaryEntry {
   job_title: string | null;
   job_description: string | null;
   years_since_graduation: number | null;
+  is_flagged_outlier?: boolean;
+  outlier_reason?: string;
 }
 
 export interface SalaryFilters {
@@ -33,6 +35,8 @@ export interface SalaryFilters {
   speciality?: Specialty;
   participantType?: ParticipantType;
   selectedYearsSinceGraduation?: number[]; // Seule propriété pour la sélection d'années
+  excludeOutliers?: boolean; // Exclure toutes les valeurs suspectes
+  excludeSpecificEntries?: string[]; // IDs spécifiques à exclure
 }
 
 export interface SalaryInsert {
@@ -73,6 +77,8 @@ export interface SalaryMetrics {
       | "job_description"
       | "years_since_graduation"
       | "id"
+      | "is_flagged_outlier"
+      | "outlier_reason"
     >
   >;
 }

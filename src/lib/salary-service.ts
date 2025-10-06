@@ -21,6 +21,29 @@ const SALARY_BUCKETS = [
   { label: "≥ 800k", min: 800_000, max: Number.POSITIVE_INFINITY },
 ];
 
+// Seuils pour la détection des valeurs aberrantes
+const OUTLIER_DETECTION = {
+  // Limites absolues
+  ABSOLUTE_MIN: 50_000, // 50k minimum
+  ABSOLUTE_MAX: 2_000_000, // 2M maximum
+
+  // Multiplicateurs pour les seuils relatifs
+  MEDIAN_MULTIPLIER: 2.5, // 250% de la médiane max
+  MEDIAN_DIVIDER: 3, // 33% de la médiane min (médiane/3)
+
+  // Seuils spécifiques par type de contrat
+  CONTRACT_LIMITS: {
+    Stage: { max: 500_000 }, // 500k max pour stages
+    Alternance: { max: 600_000 }, // 600k max pour alternance
+    CDD: { max: 1_500_000 }, // 1.5M max pour CDD
+    CDI: { max: 2_000_000 }, // 2M max pour CDI
+    "Prestation de service": { max: 2_000_000 }, // Range large pour freelance
+  },
+
+  // Minimum d'entrées pour calculer une médiane de groupe fiable
+  MIN_GROUP_SIZE: 3,
+} as const;
+
 export async function createSalaryEntry(payload: SalaryInsert) {
   if (!supabase) throw new Error("Supabase client not configured.");
 
@@ -67,7 +90,8 @@ export async function fetchSalaryEntries(
     throw new Error(error.message);
   }
 
-  return (data ?? []).map((row) => ({
+  // Transformation des données
+  let entries = (data ?? []).map((row) => ({
     ...row,
     job_title: row.job_title ?? null,
     job_description: row.job_description ?? null,
@@ -86,6 +110,38 @@ export async function fetchSalaryEntries(
     })(),
     salary: typeof row.salary === "string" ? Number(row.salary) : row.salary,
   }));
+
+  // Détection des valeurs aberrantes
+  entries = detectOutliers(entries);
+
+  return entries;
+}
+
+// Fonction utilitaire pour filtrer les entrées pour les calculs (sans affecter l'affichage)
+function filterEntriesForCalculations(
+  entries: SalaryEntry[],
+  filters: SalaryFilters
+): SalaryEntry[] {
+  let filteredEntries = [...entries];
+
+  // Filtrage des outliers si demandé
+  if (filters.excludeOutliers) {
+    filteredEntries = filteredEntries.filter(
+      (entry) => !entry.is_flagged_outlier
+    );
+  }
+
+  // Filtrage des entrées spécifiquement exclues
+  if (
+    filters.excludeSpecificEntries &&
+    filters.excludeSpecificEntries.length > 0
+  ) {
+    filteredEntries = filteredEntries.filter(
+      (entry) => !filters.excludeSpecificEntries!.includes(entry.id)
+    );
+  }
+
+  return filteredEntries;
 }
 
 export function computeMedian(entries: SalaryEntry[]): number {
@@ -112,7 +168,128 @@ export function getAvailableYearsSinceGraduation(
   return Array.from(uniqueYears).sort((a, b) => a - b);
 }
 
-export function computeSalaryMetrics(entries: SalaryEntry[]): SalaryMetrics {
+// Fonctions de détection des valeurs aberrantes
+function isAbsoluteOutlier(
+  salary: number,
+  contractType: ContractType
+): { isOutlier: boolean; reason?: string } {
+  if (salary < OUTLIER_DETECTION.ABSOLUTE_MIN) {
+    return {
+      isOutlier: true,
+      reason: `Valeur trop faible (< ${OUTLIER_DETECTION.ABSOLUTE_MIN.toLocaleString()} F)`,
+    };
+  }
+
+  if (salary > OUTLIER_DETECTION.ABSOLUTE_MAX) {
+    return {
+      isOutlier: true,
+      reason: `Valeur trop élevée (> ${OUTLIER_DETECTION.ABSOLUTE_MAX.toLocaleString()} F)`,
+    };
+  }
+
+  const contractLimit = OUTLIER_DETECTION.CONTRACT_LIMITS[contractType];
+  if (contractLimit && salary > contractLimit.max) {
+    return {
+      isOutlier: true,
+      reason: `Valeur improbable pour un ${contractType} (> ${contractLimit.max.toLocaleString()} F)`,
+    };
+  }
+
+  return { isOutlier: false };
+}
+
+function isRelativeOutlier(
+  salary: number,
+  groupMedian: number
+): { isOutlier: boolean; reason?: string } {
+  const minThreshold = groupMedian / OUTLIER_DETECTION.MEDIAN_DIVIDER;
+  const maxThreshold = groupMedian * OUTLIER_DETECTION.MEDIAN_MULTIPLIER;
+
+  if (salary < minThreshold) {
+    return {
+      isOutlier: true,
+      reason: `Très en-dessous de la médiane du groupe (${groupMedian.toLocaleString()} F)`,
+    };
+  }
+
+  if (salary > maxThreshold) {
+    return {
+      isOutlier: true,
+      reason: `Très au-dessus de la médiane du groupe (${groupMedian.toLocaleString()} F)`,
+    };
+  }
+
+  return { isOutlier: false };
+}
+
+function calculateGroupMedian(
+  entries: SalaryEntry[],
+  formation: string,
+  speciality: string,
+  contractType: string
+): number | null {
+  const groupEntries = entries.filter(
+    (entry) =>
+      entry.formation === formation &&
+      entry.speciality === speciality &&
+      entry.contract_type === contractType
+  );
+
+  if (groupEntries.length < OUTLIER_DETECTION.MIN_GROUP_SIZE) {
+    return null; // Pas assez de données pour une médiane fiable
+  }
+
+  return computeMedian(groupEntries);
+}
+
+export function detectOutliers(entries: SalaryEntry[]): SalaryEntry[] {
+  return entries.map((entry) => {
+    // Vérification absolue
+    const absoluteCheck = isAbsoluteOutlier(
+      entry.salary,
+      entry.contract_type as ContractType
+    );
+    if (absoluteCheck.isOutlier) {
+      return {
+        ...entry,
+        is_flagged_outlier: true,
+        outlier_reason: absoluteCheck.reason,
+      };
+    }
+
+    // Vérification relative par groupe
+    const groupMedian = calculateGroupMedian(
+      entries,
+      entry.formation,
+      entry.speciality,
+      entry.contract_type
+    );
+    if (groupMedian !== null) {
+      const relativeCheck = isRelativeOutlier(entry.salary, groupMedian);
+      if (relativeCheck.isOutlier) {
+        return {
+          ...entry,
+          is_flagged_outlier: true,
+          outlier_reason: relativeCheck.reason,
+        };
+      }
+    }
+
+    // Pas d'anomalie détectée
+    return {
+      ...entry,
+      is_flagged_outlier: false,
+      outlier_reason: undefined,
+    };
+  });
+}
+
+export function computeSalaryMetrics(
+  entries: SalaryEntry[],
+  filters: SalaryFilters = {}
+): SalaryMetrics {
+  // Filtrer les entrées pour les calculs (mais pas pour latestEntries)
+  const entriesForCalculations = filterEntriesForCalculations(entries, filters);
   // Ne pas initialiser à 0 - seulement les moyennes avec des données réelles
   const initialAverageFormation: Record<string, number> = {};
   const initialAverageSpecialty: Record<string, number> = {};
@@ -127,7 +304,7 @@ export function computeSalaryMetrics(entries: SalaryEntry[]): SalaryMetrics {
   const rangeCounts = SALARY_BUCKETS.map((bucket) => ({ ...bucket, count: 0 }));
   const comboBuckets: Record<string, { total: number; count: number }> = {};
 
-  entries.forEach((entry) => {
+  entriesForCalculations.forEach((entry) => {
     const safeSalary = Number(entry.salary) || 0;
     const formationKey = entry.formation;
     const specialtyKey = entry.speciality;
@@ -227,10 +404,12 @@ export function computeSalaryMetrics(entries: SalaryEntry[]): SalaryMetrics {
       job_title: entry.job_title,
       job_description: entry.job_description,
       years_since_graduation: entry.years_since_graduation,
+      is_flagged_outlier: entry.is_flagged_outlier,
+      outlier_reason: entry.outlier_reason,
     }));
 
   return {
-    totalParticipants: entries.length,
+    totalParticipants: entriesForCalculations.length,
     averageByFormation:
       averageByFormation as SalaryMetrics["averageByFormation"],
     averageBySpecialty:

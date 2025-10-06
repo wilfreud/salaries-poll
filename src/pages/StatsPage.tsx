@@ -56,8 +56,8 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { Separator } from "@/components/ui/separator";
-import { JobDetailsPopover } from "@/components/ui/job-details-popover";
+import { ContributionEntry } from "@/components/ui/contribution-entry";
+import { OutlierManager } from "@/components/ui/outlier-manager";
 
 const currencyFormatter = new Intl.NumberFormat("fr-FR", {
   style: "currency",
@@ -129,6 +129,8 @@ export default function StatsPage() {
   const [filters, setFilters] = useState<SalaryFilters>({
     participantType: "Alumni",
     selectedYearsSinceGraduation: [], // Nouvelle propriété pour sélection multiple
+    excludeOutliers: false, // Par défaut, inclure toutes les valeurs
+    excludeSpecificEntries: [], // Aucune exclusion spécifique
   });
 
   // Query pour obtenir toutes les entrées Alumni afin de calculer les années disponibles
@@ -166,7 +168,7 @@ export default function StatsPage() {
     queryKey: ["salaries", filters],
     queryFn: async () => {
       const entries = await fetchSalaryEntries(filters);
-      const metrics = computeSalaryMetrics(entries);
+      const metrics = computeSalaryMetrics(entries, filters);
       return { entries, metrics };
     },
     staleTime: 60_000,
@@ -232,6 +234,20 @@ export default function StatsPage() {
         next[key] = value as SalaryFilters[Key];
       }
       return next;
+    });
+  };
+
+  const handleToggleExcludeOutliers = (exclude: boolean) => {
+    setFilters((prev) => ({ ...prev, excludeOutliers: exclude }));
+  };
+
+  const handleToggleSpecificEntry = (entryId: string, exclude: boolean) => {
+    setFilters((prev) => {
+      const current = prev.excludeSpecificEntries || [];
+      const newExclusions = exclude
+        ? [...current, entryId]
+        : current.filter((id) => id !== entryId);
+      return { ...prev, excludeSpecificEntries: newExclusions };
     });
   };
 
@@ -515,6 +531,16 @@ export default function StatsPage() {
       )}
 
       {!hasData && !isLoadingState && !query.isError && <EmptyState />}
+
+      {hasData && query.data && (
+        <OutlierManager
+          entries={query.data.entries}
+          excludeOutliers={filters.excludeOutliers || false}
+          excludeSpecificEntries={filters.excludeSpecificEntries || []}
+          onToggleExcludeOutliers={handleToggleExcludeOutliers}
+          onToggleSpecificEntry={handleToggleSpecificEntry}
+        />
+      )}
 
       <div className="grid gap-6 md:grid-cols-3">
         <Card className="border-white/10 bg-black/40 p-6 text-white">
@@ -902,71 +928,93 @@ export default function StatsPage() {
       {hasData && query.data?.metrics.latestEntries.length ? (
         <Card className="border-white/10 bg-black/40">
           <CardHeader>
-            <CardTitle>Contributions récentes</CardTitle>
-            <CardDescription className="text-white/70">
-              Toutes les contributions les plus récentes (triées du plus récent
-              au plus ancien).
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle>Contributions récentes</CardTitle>
+                <CardDescription className="text-white/70">
+                  Toutes les contributions les plus récentes (triées du plus
+                  récent au plus ancien).
+                </CardDescription>
+              </div>
+
+              {/* Contrôles d'exclusion rapides */}
+              <div className="flex items-center gap-2">
+                {query.data.metrics.latestEntries.some(
+                  (entry) => entry.is_flagged_outlier
+                ) && (
+                  <Button
+                    variant={
+                      filters.excludeOutliers ? "destructive" : "outline"
+                    }
+                    size="sm"
+                    onClick={() =>
+                      handleToggleExcludeOutliers(!filters.excludeOutliers)
+                    }
+                    className="text-xs"
+                  >
+                    {filters.excludeOutliers
+                      ? "Inclure suspects"
+                      : "Exclure suspects"}
+                  </Button>
+                )}
+
+                {filters.excludeSpecificEntries?.length ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      handleFilterChange("excludeSpecificEntries", [])
+                    }
+                    className="text-xs text-orange-300 hover:text-orange-100"
+                  >
+                    Réinitialiser ({filters.excludeSpecificEntries.length})
+                  </Button>
+                ) : null}
+              </div>
+            </div>
           </CardHeader>
           <CardContent className="space-y-4 text-sm text-white/70">
             {query.data.metrics.latestEntries.map((entry) => {
+              const isExcluded =
+                (filters.excludeOutliers && entry.is_flagged_outlier) ||
+                filters.excludeSpecificEntries?.includes(entry.id) ||
+                false;
+
               return (
-                <div
+                <ContributionEntry
                   key={entry.id}
-                  className="rounded-2xl border border-white/10 bg-white/5 p-4"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs uppercase tracking-[0.2em] text-white/60">
-                    <span>{entry.formation}</span>
-                    <Separator
-                      orientation="vertical"
-                      className="hidden h-4 bg-white/20 sm:block"
-                    />
-                    <span>{entry.speciality}</span>
-                    <Separator
-                      orientation="vertical"
-                      className="hidden h-4 bg-white/20 sm:block"
-                    />
-                    <span>{entry.contract_type}</span>
-                    <Separator
-                      orientation="vertical"
-                      className="hidden h-4 bg-white/20 sm:block"
-                    />
-                    <span>{entry.participant_type}</span>
-                  </div>
-                  <p className="mt-3 text-sm text-white">
-                    <span className="font-semibold uppercase tracking-[0.2em] text-white/60">
-                      Intitulé
-                    </span>
-                    <br />
-                    {entry.job_title || "Non communiqué"}
-                  </p>
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="text-lg font-medium text-white">
-                      {currencyFormatter.format(entry.salary)}
-                    </span>
-                    <div className="flex flex-wrap items-center gap-3 text-xs text-white/50">
-                      <span>
-                        {new Date(entry.created_at).toLocaleDateString(
-                          "fr-FR",
-                          {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          }
-                        )}
-                      </span>
-                      {entry.years_since_graduation !== null ? (
-                        <span>
-                          Alumni +{entry.years_since_graduation} an
-                          {entry.years_since_graduation > 1 ? "s" : ""}
-                        </span>
-                      ) : null}
-                      <JobDetailsPopover entry={entry} />
-                    </div>
-                  </div>
-                </div>
+                  entry={entry}
+                  isExcluded={isExcluded}
+                  onToggleExclusion={handleToggleSpecificEntry}
+                  currencyFormatter={currencyFormatter}
+                />
               );
             })}
+
+            {/* Statistiques d'exclusion */}
+            {(filters.excludeOutliers ||
+              filters.excludeSpecificEntries?.length) && (
+              <div className="mt-4 rounded-lg border border-orange-500/20 bg-orange-500/5 p-3">
+                <p className="text-xs text-orange-200/80">
+                  <AlertTriangle className="h-3 w-3 inline mr-1" />
+                  {(() => {
+                    const totalExcluded =
+                      query.data.metrics.latestEntries.filter(
+                        (entry) =>
+                          (filters.excludeOutliers &&
+                            entry.is_flagged_outlier) ||
+                          filters.excludeSpecificEntries?.includes(entry.id)
+                      ).length;
+
+                    return `${totalExcluded} contribution${
+                      totalExcluded > 1 ? "s" : ""
+                    } exclue${
+                      totalExcluded > 1 ? "s" : ""
+                    } des calculs statistiques`;
+                  })()}
+                </p>
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : null}
