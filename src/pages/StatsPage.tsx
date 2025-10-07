@@ -128,9 +128,9 @@ function EmptyState() {
 export default function StatsPage() {
   const [filters, setFilters] = useState<SalaryFilters>({
     participantType: "Alumni",
-    selectedYearsSinceGraduation: [], // Nouvelle propriété pour sélection multiple
-    excludeOutliers: false, // Par défaut, inclure toutes les valeurs
-    excludeSpecificEntries: [], // Aucune exclusion spécifique
+    selectedYearsSinceGraduation: [],
+    excludeOutliers: true, // Par défaut, les valeurs suspectes sont ignorées
+    excludeSpecificEntries: [],
   });
 
   // Query pour obtenir toutes les entrées Alumni afin de calculer les années disponibles
@@ -261,6 +261,15 @@ export default function StatsPage() {
       transition={{ duration: 0.4, ease: "easeOut" }}
       className="space-y-12"
     >
+      {/* Note sur l'exclusion des données suspectes */}
+      <div className="rounded-xl bg-orange-500/10 border border-orange-500/30 p-3 mb-2 text-xs text-orange-200 flex items-center gap-2">
+        <AlertTriangle className="h-4 w-4 inline mr-1" />
+        <span>
+          Par défaut, les données suspectes (valeurs éloignées de la médiane)
+          sont ignorées des statistiques. Vous pouvez les inclure via le bouton{" "}
+          <b>Inclure suspects</b> ci-dessous.
+        </span>
+      </div>
       <div className="flex flex-col gap-6 rounded-3xl border border-white/15 bg-white/10 p-6 backdrop-blur-2xl md:flex-row md:items-center md:justify-between">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
