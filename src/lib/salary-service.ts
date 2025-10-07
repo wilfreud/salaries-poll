@@ -118,7 +118,7 @@ export async function fetchSalaryEntries(
 }
 
 // Fonction utilitaire pour filtrer les entrées pour les calculs (sans affecter l'affichage)
-function filterEntriesForCalculations(
+export function filterEntriesForCalculations(
   entries: SalaryEntry[],
   filters: SalaryFilters
 ): SalaryEntry[] {

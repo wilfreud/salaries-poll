@@ -22,6 +22,7 @@ import {
   fetchSalaryEntries,
   computeMedian,
   getAvailableYearsSinceGraduation,
+  filterEntriesForCalculations,
 } from "@/lib/salary-service";
 import {
   formations,
@@ -178,22 +179,31 @@ export default function StatsPage() {
     placeholderData: (previousData) => previousData,
   });
 
+  // Entrées filtrées pour les calculs (exclut les outliers/suspects si demandé)
+  const filteredEntriesForCalculations = useMemo(() => {
+    if (!query.data?.entries) return [];
+    return filterEntriesForCalculations(query.data.entries, filters);
+  }, [query.data?.entries, filters]);
+
   const overallAverage = useMemo(
     () =>
-      query.data?.entries.length
+      filteredEntriesForCalculations.length
         ? Math.round(
-            query.data.entries.reduce(
+            filteredEntriesForCalculations.reduce(
               (acc: number, item: SalaryEntry) => acc + item.salary,
               0
-            ) / query.data.entries.length
+            ) / filteredEntriesForCalculations.length
           )
         : 0,
-    [query.data?.entries]
+    [filteredEntriesForCalculations]
   );
 
   const medianSalary = useMemo(
-    () => (query.data?.entries ? computeMedian(query.data.entries) : 0),
-    [query.data?.entries]
+    () =>
+      filteredEntriesForCalculations.length
+        ? computeMedian(filteredEntriesForCalculations)
+        : 0,
+    [filteredEntriesForCalculations]
   );
 
   const pivotedTrend = useMemo(() => {
@@ -252,7 +262,7 @@ export default function StatsPage() {
   };
 
   const isLoadingState = query.isLoading || query.isFetching;
-  const hasData = (query.data?.entries?.length ?? 0) > 0;
+  const hasData = (filteredEntriesForCalculations?.length ?? 0) > 0;
 
   return (
     <motion.section
@@ -647,7 +657,7 @@ export default function StatsPage() {
                 <div className="mt-1 text-sm text-white/60">
                   Alumni:{" "}
                   {
-                    query.data?.entries.filter(
+                    filteredEntriesForCalculations.filter(
                       (e) =>
                         e.formation === formation &&
                         e.participant_type === "Alumni"
@@ -655,7 +665,7 @@ export default function StatsPage() {
                   }{" "}
                   • Étudiants:{" "}
                   {
-                    query.data?.entries.filter(
+                    filteredEntriesForCalculations.filter(
                       (e) =>
                         e.formation === formation &&
                         e.participant_type === "Étudiant"
